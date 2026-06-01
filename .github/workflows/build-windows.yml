@@ -16,7 +16,11 @@ permissions:
 jobs:
   build-windows-x64:
     name: Windows x64
-    runs-on: windows-2022
+    # VS 2026 image: its CMake (4.x) + VS 18 2026 generator emit .slnx solution
+    # files, which megapahit's CMake (LLPrimitive.cmake, main build) expects.
+    # windows-2022 ships VS 2022, whose generator emits classic .sln and breaks
+    # the colladadom build + main MSBuild step.
+    runs-on: windows-2025-vs2026
 
     steps:
       - name: Set VCPKG_ROOT
@@ -96,25 +100,6 @@ jobs:
             "-DCMAKE_TOOLCHAIN_FILE:FILEPATH=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVS_DISABLE_FATAL_WARNINGS:BOOL=ON \
             ../indra
-
-      - name: Diagnose colladadom build (x64)
-        if: always()
-        shell: bash
-        run: |
-          set -x
-          COLLADA="build-windows-x86_64/3p-colladadom-2.3-r11"
-          echo "=== does the colladadom build dir exist? ==="
-          ls -la "$COLLADA" || echo "MISSING: $COLLADA"
-          echo "=== is Project.slnx present? ==="
-          ls -la "$COLLADA"/*.slnx "$COLLADA"/*.sln 2>/dev/null || echo "no .slnx/.sln found"
-          echo "=== re-run the colladadom MSBuild by hand to surface the real error ==="
-          if [ -f "$COLLADA/Project.slnx" ]; then
-            MSBuild.exe "$COLLADA/Project.slnx" -p:Configuration=Release -p:Platform=x64 -v:m || true
-          fi
-          echo "=== where did any collada .lib files actually land? ==="
-          find "$COLLADA" -name "*.lib" 2>/dev/null || echo "no .lib files found under $COLLADA"
-          echo "=== full subtree (first 200 entries) ==="
-          find "$COLLADA" 2>/dev/null | head -200
 
       - name: Build (x64)
         shell: bash
