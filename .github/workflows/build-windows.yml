@@ -23,6 +23,9 @@ jobs:
         shell: bash
         run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -119,12 +122,20 @@ jobs:
 
   build-windows-arm64:
     name: Windows arm64
+    # Disabled until a native arm64 Windows runner (windows-11-arm) is available.
+    # Cross-compiling on an x64 host fails: the colladadom step builds an x64 lib
+    # that won't link against an arm64 viewer. To re-enable, set `if: true` (or
+    # remove this line) and change runs-on to windows-11-arm.
+    if: false
     runs-on: windows-2022
 
     steps:
       - name: Set VCPKG_ROOT
         shell: bash
         run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
 
       - name: Checkout source
         uses: actions/checkout@v4
