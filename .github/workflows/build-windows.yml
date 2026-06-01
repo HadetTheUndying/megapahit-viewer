@@ -19,6 +19,10 @@ jobs:
     runs-on: windows-2022
 
     steps:
+      - name: Set VCPKG_ROOT
+        shell: bash
+        run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -118,6 +122,10 @@ jobs:
     runs-on: windows-2022
 
     steps:
+      - name: Set VCPKG_ROOT
+        shell: bash
+        run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+
       - name: Checkout source
         uses: actions/checkout@v4
 
