@@ -29,6 +29,15 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Restore vcpkg cache (x64)
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed
+          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          restore-keys: |
+            vcpkg-x64-windows-
+
       - name: Install vcpkg dependencies (x64)
         shell: bash
         run: |
@@ -50,13 +59,13 @@ jobs:
             "libxml2[tools]:x64-windows" \
             xxhash:x64-windows
 
-      - name: Cache vcpkg installed packages (x64)
-        uses: actions/cache@v4
+      - name: Save vcpkg cache (x64)
+        # Save even if a later step fails, so we don't recompile deps each run.
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
         with:
           path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-x64-windows-${{ hashFiles('**/CMakeLists.txt') }}
-          restore-keys: |
-            vcpkg-x64-windows-
+          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (x64)
         shell: bash
@@ -77,7 +86,7 @@ jobs:
             -DUSE_FMODSTUDIO:BOOL=OFF \
             -DENABLE_MEDIA_PLUGINS:BOOL=ON \
             -DLL_TESTS:BOOL=OFF \
-            -DNDOF:BOOL=ON \
+            -DNDOF:BOOL=OFF \
             -DROOT_PROJECT_NAME:STRING=Megapahit \
             -DVIEWER_CHANNEL:STRING=Megapahit \
             -DVIEWER_BINARY_NAME:STRING=Megapahit \
@@ -87,6 +96,25 @@ jobs:
             "-DCMAKE_TOOLCHAIN_FILE:FILEPATH=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVS_DISABLE_FATAL_WARNINGS:BOOL=ON \
             ../indra
+
+      - name: Diagnose colladadom build (x64)
+        if: always()
+        shell: bash
+        run: |
+          set -x
+          COLLADA="build-windows-x86_64/3p-colladadom-2.3-r11"
+          echo "=== does the colladadom build dir exist? ==="
+          ls -la "$COLLADA" || echo "MISSING: $COLLADA"
+          echo "=== is Project.slnx present? ==="
+          ls -la "$COLLADA"/*.slnx "$COLLADA"/*.sln 2>/dev/null || echo "no .slnx/.sln found"
+          echo "=== re-run the colladadom MSBuild by hand to surface the real error ==="
+          if [ -f "$COLLADA/Project.slnx" ]; then
+            MSBuild.exe "$COLLADA/Project.slnx" -p:Configuration=Release -p:Platform=x64 -v:m || true
+          fi
+          echo "=== where did any collada .lib files actually land? ==="
+          find "$COLLADA" -name "*.lib" 2>/dev/null || echo "no .lib files found under $COLLADA"
+          echo "=== full subtree (first 200 entries) ==="
+          find "$COLLADA" 2>/dev/null | head -200
 
       - name: Build (x64)
         shell: bash
@@ -140,6 +168,15 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Restore vcpkg cache (arm64)
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed
+          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          restore-keys: |
+            vcpkg-arm64-windows-
+
       - name: Install vcpkg dependencies (arm64)
         shell: bash
         run: |
@@ -164,13 +201,12 @@ jobs:
             xxhash:arm64-windows
           vcpkg install boost-fiber:arm64-windows --allow-unsupported || true
 
-      - name: Cache vcpkg installed packages (arm64)
-        uses: actions/cache@v4
+      - name: Save vcpkg cache (arm64)
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
         with:
           path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-arm64-windows-${{ hashFiles('**/CMakeLists.txt') }}
-          restore-keys: |
-            vcpkg-arm64-windows-
+          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (arm64)
         shell: bash
