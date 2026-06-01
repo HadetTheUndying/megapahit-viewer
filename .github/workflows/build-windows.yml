@@ -107,6 +107,13 @@ jobs:
           cd build-windows-x86_64
           MSBuild.exe Megapahit.slnx -p:Configuration=Release -m
 
+      - name: Install NSIS (x64)
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          # Add NSIS to PATH for the cpack step (makensis lives here)
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Package (x64)
         shell: bash
         run: |
