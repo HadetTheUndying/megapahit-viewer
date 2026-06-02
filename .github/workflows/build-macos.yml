@@ -33,19 +33,42 @@ jobs:
         run: |
           # Ports install is owned by the runner under setup-macports,
           # so no sudo is needed (unlike the README's local instructions).
+          #
+          # NOTE: the README uses +universal (fat arm64+x86_64) libs, but
+          # MacPorts' own guidance is that +universal is poorly supported on
+          # Apple Silicon and many ports fail to build that way (apr-util is
+          # one). The runner is arm64 and we build the viewer arm64-only
+          # (-DCMAKE_OSX_ARCHITECTURES=$(uname -m)), so universal libs aren't
+          # needed here. Building arm64-only is the better-tested path and
+          # roughly halves dependency compile time.
           port install \
             cmake pkgconfig \
-            freealut +universal \
-            apr-util +universal \
-            boost188 +universal \
+            freealut \
+            apr-util \
+            boost188 \
             glm \
-            hunspell +universal \
-            freetype +universal \
-            minizip +universal \
-            nghttp2 +universal \
-            openjpeg +universal \
-            libvorbis +universal \
+            hunspell \
+            freetype \
+            minizip \
+            nghttp2 \
+            openjpeg \
+            libvorbis \
             xxhashlib
+
+      - name: Dump MacPorts logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== searching for MacPorts main.log files ==="
+          LOGDIR="/opt/local/var/macports/logs"
+          find "$LOGDIR" -name "main.log" 2>/dev/null | while read -r log; do
+            echo ""
+            echo "######################################################"
+            echo "### $log"
+            echo "######################################################"
+            # The actual compiler error is usually near the end; show the tail.
+            tail -n 80 "$log"
+          done
 
       - name: Configure
         shell: bash
