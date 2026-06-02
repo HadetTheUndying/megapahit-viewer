@@ -25,35 +25,14 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
-      - name: Set up MacPorts
+      - name: Set up MacPorts (installs cached deps from parameter file)
         uses: melusina-org/setup-macports@v1
-
-      - name: Install MacPorts dependencies
-        shell: bash
-        run: |
-          # Ports install is owned by the runner under setup-macports,
-          # so no sudo is needed (unlike the README's local instructions).
-          #
-          # NOTE: the README uses +universal (fat arm64+x86_64) libs, but
-          # MacPorts' own guidance is that +universal is poorly supported on
-          # Apple Silicon and many ports fail to build that way (apr-util is
-          # one). The runner is arm64 and we build the viewer arm64-only
-          # (-DCMAKE_OSX_ARCHITECTURES=$(uname -m)), so universal libs aren't
-          # needed here. Building arm64-only is the better-tested path and
-          # roughly halves dependency compile time.
-          port install \
-            cmake pkgconfig \
-            freealut \
-            apr-util \
-            boost188 \
-            glm \
-            hunspell \
-            freetype \
-            minizip \
-            nghttp2 \
-            openjpeg \
-            libvorbis \
-            xxhashlib
+        with:
+          # Ports are listed in this file so the action installs them under
+          # its built-in cache (keyed on macOS version + this file). This is
+          # what makes the slow boost/ICU compile reused across runs instead
+          # of rebuilt every time.
+          parameters: .github/parameters/setup-macports.yaml
 
       - name: Dump MacPorts logs on failure
         if: failure()
@@ -79,12 +58,21 @@ jobs:
           export LL_BUILD="-O3 -gdwarf-2 -stdlib=libc++ -mmacosx-version-min=12 -iwithsysroot $SDKPATH -std=c++20 -fPIC -DLL_RELEASE=1 -DLL_RELEASE_FOR_DOWNLOAD=1 -DNDEBUG -DPIC -DLL_DARWIN=1"
 
           mkdir build-macos && cd build-macos
+          # NOTE: ENABLE_MEDIA_PLUGINS is OFF as a temporary measure. With it
+          # ON, the viewer bundles libVLC and runs install_name_tool on the
+          # VLC dylibs *after* ad-hoc signing, which invalidates their code
+          # signatures (libvlc/libvlccore fail `codesign --verify`, and the
+          # app is SIGKILL'd at launch: "Code Signature Invalid"). Only the
+          # VLC dylibs are affected. For test builds of non-media features
+          # this is an acceptable drop. TODO before official releases: fix the
+          # signing order so VLC dylibs are (re)signed after their rpath
+          # fixups, then set this back to ON.
           cmake \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DADDRESS_SIZE:STRING=64 \
             -DUSE_OPENAL:BOOL=ON \
             -DUSE_FMODSTUDIO:BOOL=OFF \
-            -DENABLE_MEDIA_PLUGINS:BOOL=ON \
+            -DENABLE_MEDIA_PLUGINS:BOOL=OFF \
             -DLL_TESTS:BOOL=OFF \
             -DNDOF:BOOL=OFF \
             -DROOT_PROJECT_NAME:STRING=Megapahit \
@@ -117,19 +105,41 @@ jobs:
         shell: bash
         run: echo "version=$(cat indra/newview/viewer_version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Zip the .app
+      - name: Package .app into a .dmg
         shell: bash
         run: |
           cd build-macos/newview
-          # ditto preserves macOS bundle metadata / symlinks better than zip
-          ditto -c -k --sequesterRsrc --keepParent Megapahit.app \
-            "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).zip"
+          # A .dmg preserves the bundle byte-for-byte (symlinks, perms, xattrs),
+          # so the ad-hoc code signature stays valid. A zip round-trip can
+          # dereference framework symlinks and break the seal, which shows up
+          # as "code or signature have been modified" / "app is damaged".
+          hdiutil create \
+            -volname "Megapahit" \
+            -srcfolder "Megapahit.app" \
+            -ov -format UDZO \
+            "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).dmg"
+
+      - name: Verify signature survived packaging
+        shell: bash
+        run: |
+          cd build-macos/newview
+          # Mount the dmg and verify the signature inside it is still intact.
+          MNT="$(mktemp -d)"
+          hdiutil attach -nobrowse -mountpoint "$MNT" \
+            Megapahit-*-macos-*.dmg
+          codesign --verify --deep --strict --verbose=2 "$MNT/Megapahit.app" || {
+            echo "Signature verification FAILED inside the dmg"
+            hdiutil detach "$MNT" || true
+            exit 1
+          }
+          hdiutil detach "$MNT"
+          echo "Signature verified intact inside the dmg."
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v6
         with:
           name: megapahit-macos-${{ steps.version.outputs.version }}
-          path: build-macos/newview/Megapahit-*-macos-*.zip
+          path: build-macos/newview/Megapahit-*-macos-*.dmg
           if-no-files-found: error
 
       - name: Upload to release
@@ -137,5 +147,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
-          files: build-macos/newview/Megapahit-*-macos-*.zip
+          files: build-macos/newview/Megapahit-*-macos-*.dmg
           prerelease: ${{ startsWith(github.ref_name, 'test/') || startsWith(github.ref_name, 'build/') }}
