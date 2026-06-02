@@ -1,0 +1,118 @@
+name: macOS Build
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    tags:
+      - 'test/*'
+      - 'build/*'
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: macOS (arm64)
+    # GitHub macOS runners are Apple Silicon; this produces an arm64 build
+    # via -DCMAKE_OSX_ARCHITECTURES=$(uname -m). For an Intel artifact,
+    # add a matrix entry on macos-13 later.
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Set up MacPorts
+        uses: melusina-org/setup-macports@v1
+
+      - name: Install MacPorts dependencies
+        shell: bash
+        run: |
+          # Ports install is owned by the runner under setup-macports,
+          # so no sudo is needed (unlike the README's local instructions).
+          port install \
+            cmake pkgconfig \
+            freealut +universal \
+            apr-util +universal \
+            boost188 +universal \
+            glm \
+            hunspell +universal \
+            freetype +universal \
+            minizip +universal \
+            nghttp2 +universal \
+            openjpeg +universal \
+            libvorbis +universal \
+            xxhashlib
+
+      - name: Configure
+        shell: bash
+        run: |
+          # Resolve the active SDK path dynamically rather than hardcoding
+          # the README's literal /Applications/Xcode.app/... path.
+          SDKPATH="$(xcrun --show-sdk-path)"
+          export LL_BUILD="-O3 -gdwarf-2 -stdlib=libc++ -mmacosx-version-min=12 -iwithsysroot $SDKPATH -std=c++20 -fPIC -DLL_RELEASE=1 -DLL_RELEASE_FOR_DOWNLOAD=1 -DNDEBUG -DPIC -DLL_DARWIN=1"
+
+          mkdir build-macos && cd build-macos
+          cmake \
+            -DCMAKE_BUILD_TYPE:STRING=Release \
+            -DADDRESS_SIZE:STRING=64 \
+            -DUSE_OPENAL:BOOL=ON \
+            -DUSE_FMODSTUDIO:BOOL=OFF \
+            -DENABLE_MEDIA_PLUGINS:BOOL=ON \
+            -DLL_TESTS:BOOL=OFF \
+            -DNDOF:BOOL=OFF \
+            -DROOT_PROJECT_NAME:STRING=Megapahit \
+            -DVIEWER_CHANNEL:STRING=Megapahit \
+            -DVIEWER_BINARY_NAME:STRING=megapahit \
+            -DBUILD_SHARED_LIBS:BOOL=OFF \
+            -DINSTALL:BOOL=ON \
+            -DPACKAGE:BOOL=OFF \
+            -DCMAKE_INSTALL_PREFIX:PATH=newview/Megapahit.app/Contents/Resources \
+            -DCMAKE_OSX_ARCHITECTURES:STRING=$(uname -m) \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET:STRING=12 \
+            -DENABLE_SIGNING:BOOL=ON \
+            -DSIGNING_IDENTITY:STRING=- \
+            ../indra
+
+      - name: Build
+        shell: bash
+        run: |
+          cd build-macos
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: Install into app bundle
+        shell: bash
+        run: |
+          cd build-macos
+          make install
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "version=$(cat indra/newview/viewer_version.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Zip the .app
+        shell: bash
+        run: |
+          cd build-macos/newview
+          # ditto preserves macOS bundle metadata / symlinks better than zip
+          ditto -c -k --sequesterRsrc --keepParent Megapahit.app \
+            "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).zip"
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: megapahit-macos-${{ steps.version.outputs.version }}
+          path: build-macos/newview/Megapahit-*-macos-*.zip
+          if-no-files-found: error
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ github.ref_name }}
+          files: build-macos/newview/Megapahit-*-macos-*.zip
+          prerelease: ${{ startsWith(github.ref_name, 'test/') || startsWith(github.ref_name, 'build/') }}
