@@ -45,11 +45,28 @@ jobs:
       - name: Install vcpkg dependencies (x64)
         shell: bash
         run: |
+          # Install the specific compiled boost libraries the viewer links,
+          # NOT the bare `boost` metapackage. Most of boost is header-only;
+          # only a handful of components produce .lib files (context, fiber,
+          # filesystem, thread, program_options, json, url). Relying on the
+          # `boost` metapackage let those slip through a fresh resolve (it
+          # built ~26 header-only sub-packages but none of the compiled libs),
+          # so the link failed with LNK1181 looking for boost_context-*.lib.
+          # Listing them explicitly makes the install plan always produce the
+          # .lib files the linker needs. Transitive deps (boost-system,
+          # boost-chrono, boost-atomic, boost-date-time, etc.) come in
+          # automatically.
           vcpkg install \
             python3:x64-windows \
             freealut:x64-windows \
             apr-util:x64-windows \
-            boost:x64-windows \
+            boost-context:x64-windows \
+            boost-fiber:x64-windows \
+            boost-filesystem:x64-windows \
+            boost-thread:x64-windows \
+            boost-program-options:x64-windows \
+            boost-json:x64-windows \
+            boost-url:x64-windows \
             freetype:x64-windows \
             glm:x64-windows \
             hunspell:x64-windows \
