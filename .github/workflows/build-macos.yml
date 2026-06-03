@@ -25,6 +25,33 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
+      - name: Patch CEF/VLC version guard for macOS
+        shell: bash
+        run: |
+          # The viewer guards its CEF/Dullahan + libVLC version-reporting code
+          # with `#if !_M_ARM64`. _M_ARM64 is an MSVC-only predefined macro, so
+          # it is never defined under Clang on macOS (even on Apple Silicon).
+          # The block therefore compiles on macOS and fails on the missing
+          # `cef/dullahan_version.h` header when those headers are not on the
+          # include path. Excluding Apple here matches the block's evident
+          # intent (skip it on platforms where the CEF/VLC version headers
+          # aren't present in this configuration). The `set -e` + count check
+          # makes this fail loudly if the upstream guard text ever changes,
+          # rather than silently no-op.
+          set -euo pipefail
+          f=indra/newview/llappviewer.cpp
+          before=$(grep -c '#if !_M_ARM64 // !LL_LINUX' "$f")
+          if [ "$before" -ne 3 ]; then
+            echo "ERROR: expected 3 '#if !_M_ARM64 // !LL_LINUX' guards, found $before."
+            echo "Upstream source changed; re-check the macOS CEF/VLC patch."
+            grep -n '_M_ARM64' "$f" || true
+            exit 1
+          fi
+          perl -pi -e 's{#if !_M_ARM64 // !LL_LINUX}{#if !_M_ARM64 \&\& !defined(__APPLE__) // !LL_LINUX / !LL_DARWIN}g' "$f"
+          after=$(grep -c '!defined(__APPLE__)' "$f")
+          echo "Patched $after guard(s) in $f."
+          [ "$after" -eq 3 ]
+
       - name: Set up MacPorts (installs cached deps from parameter file)
         uses: melusina-org/setup-macports@v1
         with:
