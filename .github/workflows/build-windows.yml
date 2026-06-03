@@ -45,21 +45,23 @@ jobs:
       - name: Install vcpkg dependencies (x64)
         shell: bash
         run: |
-          # Install the specific compiled boost libraries the viewer links,
-          # NOT the bare `boost` metapackage. Most of boost is header-only;
-          # only a handful of components produce .lib files (context, fiber,
-          # filesystem, thread, program_options, json, url). Relying on the
-          # `boost` metapackage let those slip through a fresh resolve (it
-          # built ~26 header-only sub-packages but none of the compiled libs),
-          # so the link failed with LNK1181 looking for boost_context-*.lib.
-          # Listing them explicitly makes the install plan always produce the
-          # .lib files the linker needs. Transitive deps (boost-system,
-          # boost-chrono, boost-atomic, boost-date-time, etc.) come in
-          # automatically.
+          # The viewer uses a broad swath of boost: many header-only libraries
+          # (signals2, stacktrace, bind, function, ...) AND several compiled
+          # ones that produce .lib files (context, fiber, filesystem, thread,
+          # program_options, json, url). Install the full `boost` metapackage
+          # so every header is present, and ALSO name the compiled components
+          # explicitly so their .lib files are guaranteed to be produced even
+          # if a given vcpkg resolve would otherwise skip them. (Installing
+          # only the compiled components starves the header-only includes;
+          # installing only the metapackage previously left the .libs missing
+          # on a stale cache-hit resolve. Listing both, on a clean resolve,
+          # covers both failure modes.) The clean resolve is ensured because
+          # editing this file changes the vcpkg cache key below.
           vcpkg install \
             python3:x64-windows \
             freealut:x64-windows \
             apr-util:x64-windows \
+            boost:x64-windows \
             boost-context:x64-windows \
             boost-fiber:x64-windows \
             boost-filesystem:x64-windows \
