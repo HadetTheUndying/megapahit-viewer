@@ -24,10 +24,10 @@ jobs:
         run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install vcpkg dependencies (x64)
         shell: bash
@@ -49,16 +49,6 @@ jobs:
             libvorbis:x64-windows \
             "libxml2[tools]:x64-windows" \
             xxhash:x64-windows
-
-      - name: Inspect boost libs (x64)
-        shell: bash
-        run: |
-          echo "=== boost libs in vcpkg x64-windows/lib ==="
-          find "$VCPKG_ROOT/installed/x64-windows/lib" -name "boost_context*" -o -name "boost_fiber*" -o -name "boost_filesystem*" | sort
-          echo "=== boost DLLs in vcpkg x64-windows/bin ==="
-          find "$VCPKG_ROOT/installed/x64-windows/bin" -name "boost_context*" -o -name "boost_fiber*" -o -name "boost_filesystem*" | sort
-          echo "=== prefix_result candidate (x64-windows/lib) ==="
-          ls "$VCPKG_ROOT/installed/x64-windows/lib/boost_context"* 2>/dev/null || echo "no boost_context libs found at that path"
 
       - name: Configure (x64)
         shell: bash
@@ -139,10 +129,10 @@ jobs:
         run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install vcpkg dependencies (arm64)
         shell: bash
