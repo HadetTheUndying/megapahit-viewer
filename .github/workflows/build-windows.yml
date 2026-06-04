@@ -33,42 +33,22 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
-      - name: Restore vcpkg cache (x64)
-        id: vcpkg-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
-          restore-keys: |
-            vcpkg-x64-windows-
-
       - name: Install vcpkg dependencies (x64)
         shell: bash
         run: |
-          # The viewer uses a broad swath of boost: many header-only libraries
-          # (signals2, stacktrace, bind, function, ...) AND several compiled
-          # ones that produce .lib files (context, fiber, filesystem, thread,
-          # program_options, json, url). Install the full `boost` metapackage
-          # so every header is present, and ALSO name the compiled components
-          # explicitly so their .lib files are guaranteed to be produced even
-          # if a given vcpkg resolve would otherwise skip them. (Installing
-          # only the compiled components starves the header-only includes;
-          # installing only the metapackage previously left the .libs missing
-          # on a stale cache-hit resolve. Listing both, on a clean resolve,
-          # covers both failure modes.) The clean resolve is ensured because
-          # editing this file changes the vcpkg cache key below.
+          # Exact package list from the megapahit README (Windows x64). `boost`
+          # is the full metapackage; on a clean resolve it builds every boost
+          # piece the viewer links, including the compiled libs (boost_context,
+          # boost_fiber, etc.). No vcpkg cache is used here on purpose: a stale
+          # or partial cached `installed` tree caused the install plan to skip
+          # those compiled libs, which then failed at link (LNK1181 on
+          # boost_context-*.lib). A clean resolve every run avoids that whole
+          # class of failure; it is slower but reproducible.
           vcpkg install \
             python3:x64-windows \
             freealut:x64-windows \
             apr-util:x64-windows \
             boost:x64-windows \
-            boost-context:x64-windows \
-            boost-fiber:x64-windows \
-            boost-filesystem:x64-windows \
-            boost-thread:x64-windows \
-            boost-program-options:x64-windows \
-            boost-json:x64-windows \
-            boost-url:x64-windows \
             freetype:x64-windows \
             glm:x64-windows \
             hunspell:x64-windows \
@@ -81,14 +61,6 @@ jobs:
             libvorbis:x64-windows \
             "libxml2[tools]:x64-windows" \
             xxhash:x64-windows
-
-      - name: Save vcpkg cache (x64)
-        # Save even if a later step fails, so we don't recompile deps each run.
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (x64)
         shell: bash
@@ -109,7 +81,7 @@ jobs:
             -DUSE_FMODSTUDIO:BOOL=OFF \
             -DENABLE_MEDIA_PLUGINS:BOOL=ON \
             -DLL_TESTS:BOOL=OFF \
-            -DNDOF:BOOL=OFF \
+            -DNDOF:BOOL=ON \
             -DROOT_PROJECT_NAME:STRING=Megapahit \
             -DVIEWER_CHANNEL:STRING=Megapahit \
             -DVIEWER_BINARY_NAME:STRING=Megapahit \
@@ -179,15 +151,6 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
-      - name: Restore vcpkg cache (arm64)
-        id: vcpkg-cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
-          restore-keys: |
-            vcpkg-arm64-windows-
-
       - name: Install vcpkg dependencies (arm64)
         shell: bash
         run: |
@@ -211,13 +174,6 @@ jobs:
             "libxml2[tools]:arm64-windows" \
             xxhash:arm64-windows
           vcpkg install boost-fiber:arm64-windows --allow-unsupported || true
-
-      - name: Save vcpkg cache (arm64)
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (arm64)
         shell: bash
