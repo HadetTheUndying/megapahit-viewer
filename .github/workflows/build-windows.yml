@@ -16,10 +16,6 @@ permissions:
 jobs:
   build-windows-x64:
     name: Windows x64
-    # VS 2026 image: its CMake (4.x) + VS 18 2026 generator emit .slnx solution
-    # files, which megapahit's CMake (LLPrimitive.cmake, main build) expects.
-    # windows-2022 ships VS 2022, whose generator emits classic .sln and breaks
-    # the colladadom build + main MSBuild step.
     runs-on: windows-2025-vs2026
 
     steps:
@@ -28,31 +24,14 @@ jobs:
         run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v3
+        uses: microsoft/setup-msbuild@v2
 
       - name: Checkout source
-        uses: actions/checkout@v5
-
-      # vcpkg cache restore: this is the configuration that produced the last
-      # known-good Windows build. The cached `installed` tree stages the boost
-      # import libs where the linker's /LIBPATH expects them; a clean resolve
-      # (no cache) builds the same packages but does NOT stage those libs into
-      # build .../packages/lib/release, which is what caused the recurring
-      # LNK1181 on boost_context-*.lib. Restoring the cache keeps the build
-      # green and fast. Revisit only if we deliberately want a clean resolve.
-      - name: Restore vcpkg cache (x64)
-        id: vcpkg-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
-          restore-keys: |
-            vcpkg-x64-windows-
+        uses: actions/checkout@v4
 
       - name: Install vcpkg dependencies (x64)
         shell: bash
         run: |
-          # Exact package list from the megapahit README (Windows x64).
           vcpkg install \
             python3:x64-windows \
             freealut:x64-windows \
@@ -71,13 +50,15 @@ jobs:
             "libxml2[tools]:x64-windows" \
             xxhash:x64-windows
 
-      - name: Save vcpkg cache (x64)
-        # Save even if a later step fails, so we don't recompile deps each run.
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
+      - name: Inspect boost libs (x64)
+        shell: bash
+        run: |
+          echo "=== boost libs in vcpkg x64-windows/lib ==="
+          find "$VCPKG_ROOT/installed/x64-windows/lib" -name "boost_context*" -o -name "boost_fiber*" -o -name "boost_filesystem*" | sort
+          echo "=== boost DLLs in vcpkg x64-windows/bin ==="
+          find "$VCPKG_ROOT/installed/x64-windows/bin" -name "boost_context*" -o -name "boost_fiber*" -o -name "boost_filesystem*" | sort
+          echo "=== prefix_result candidate (x64-windows/lib) ==="
+          ls "$VCPKG_ROOT/installed/x64-windows/lib/boost_context"* 2>/dev/null || echo "no boost_context libs found at that path"
 
       - name: Configure (x64)
         shell: bash
@@ -98,7 +79,7 @@ jobs:
             -DUSE_FMODSTUDIO:BOOL=OFF \
             -DENABLE_MEDIA_PLUGINS:BOOL=ON \
             -DLL_TESTS:BOOL=OFF \
-            -DNDOF:BOOL=ON \
+            -DNDOF:BOOL=OFF \
             -DROOT_PROJECT_NAME:STRING=Megapahit \
             -DVIEWER_CHANNEL:STRING=Megapahit \
             -DVIEWER_BINARY_NAME:STRING=Megapahit \
@@ -119,7 +100,6 @@ jobs:
         shell: pwsh
         run: |
           choco install nsis --no-progress -y
-          # Add NSIS to PATH for the cpack step (makensis lives here)
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Package (x64)
@@ -150,10 +130,6 @@ jobs:
 
   build-windows-arm64:
     name: Windows arm64
-    # Disabled until a native arm64 Windows runner (windows-11-arm) is available.
-    # Cross-compiling on an x64 host fails: the colladadom step builds an x64 lib
-    # that won't link against an arm64 viewer. To re-enable, set `if: true` (or
-    # remove this line) and change runs-on to windows-11-arm.
     if: false
     runs-on: windows-2022
 
@@ -163,19 +139,10 @@ jobs:
         run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
       - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v3
+        uses: microsoft/setup-msbuild@v2
 
       - name: Checkout source
-        uses: actions/checkout@v5
-
-      - name: Restore vcpkg cache (arm64)
-        id: vcpkg-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
-          restore-keys: |
-            vcpkg-arm64-windows-
+        uses: actions/checkout@v4
 
       - name: Install vcpkg dependencies (arm64)
         shell: bash
@@ -200,13 +167,6 @@ jobs:
             "libxml2[tools]:arm64-windows" \
             xxhash:arm64-windows
           vcpkg install boost-fiber:arm64-windows --allow-unsupported || true
-
-      - name: Save vcpkg cache (arm64)
-        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.VCPKG_ROOT }}/installed
-          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (arm64)
         shell: bash
