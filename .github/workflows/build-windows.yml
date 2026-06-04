@@ -33,17 +33,26 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
+      # vcpkg cache restore: this is the configuration that produced the last
+      # known-good Windows build. The cached `installed` tree stages the boost
+      # import libs where the linker's /LIBPATH expects them; a clean resolve
+      # (no cache) builds the same packages but does NOT stage those libs into
+      # build .../packages/lib/release, which is what caused the recurring
+      # LNK1181 on boost_context-*.lib. Restoring the cache keeps the build
+      # green and fast. Revisit only if we deliberately want a clean resolve.
+      - name: Restore vcpkg cache (x64)
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed
+          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          restore-keys: |
+            vcpkg-x64-windows-
+
       - name: Install vcpkg dependencies (x64)
         shell: bash
         run: |
-          # Exact package list from the megapahit README (Windows x64). `boost`
-          # is the full metapackage; on a clean resolve it builds every boost
-          # piece the viewer links, including the compiled libs (boost_context,
-          # boost_fiber, etc.). No vcpkg cache is used here on purpose: a stale
-          # or partial cached `installed` tree caused the install plan to skip
-          # those compiled libs, which then failed at link (LNK1181 on
-          # boost_context-*.lib). A clean resolve every run avoids that whole
-          # class of failure; it is slower but reproducible.
+          # Exact package list from the megapahit README (Windows x64).
           vcpkg install \
             python3:x64-windows \
             freealut:x64-windows \
@@ -61,6 +70,14 @@ jobs:
             libvorbis:x64-windows \
             "libxml2[tools]:x64-windows" \
             xxhash:x64-windows
+
+      - name: Save vcpkg cache (x64)
+        # Save even if a later step fails, so we don't recompile deps each run.
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed
+          key: vcpkg-x64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (x64)
         shell: bash
@@ -117,7 +134,7 @@ jobs:
         run: echo "version=$(cat indra/newview/viewer_version.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Upload installer artifact (x64)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: megapahit-windows-x64-${{ steps.version.outputs.version }}
           path: build-windows-x86_64/Megapahit-*-win64.exe
@@ -125,7 +142,7 @@ jobs:
 
       - name: Upload to release (x64)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           files: build-windows-x86_64/Megapahit-*-win64.exe
@@ -151,6 +168,15 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
+      - name: Restore vcpkg cache (arm64)
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed
+          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          restore-keys: |
+            vcpkg-arm64-windows-
+
       - name: Install vcpkg dependencies (arm64)
         shell: bash
         run: |
@@ -174,6 +200,13 @@ jobs:
             "libxml2[tools]:arm64-windows" \
             xxhash:arm64-windows
           vcpkg install boost-fiber:arm64-windows --allow-unsupported || true
+
+      - name: Save vcpkg cache (arm64)
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed
+          key: vcpkg-arm64-windows-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Configure (arm64)
         shell: bash
@@ -227,7 +260,7 @@ jobs:
         run: echo "version=$(cat indra/newview/viewer_version.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Upload installer artifact (arm64)
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: megapahit-windows-arm64-${{ steps.version.outputs.version }}
           path: build-windows-aarch64/Megapahit-*-win64.exe
@@ -235,7 +268,7 @@ jobs:
 
       - name: Upload to release (arm64)
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           files: build-windows-aarch64/Megapahit-*-win64.exe
