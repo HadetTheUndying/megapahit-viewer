@@ -16,49 +16,15 @@ permissions:
 jobs:
   build-macos:
     name: macOS (arm64)
-    # GitHub macOS runners are Apple Silicon; this produces an arm64 build
-    # via -DCMAKE_OSX_ARCHITECTURES=$(uname -m). For an Intel artifact,
-    # add a matrix entry on macos-13 later.
     runs-on: macos-15
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
 
-      - name: Patch CEF/VLC version guard for macOS
-        shell: bash
-        run: |
-          # The viewer guards its CEF/Dullahan + libVLC version-reporting code
-          # with `#if !_M_ARM64`. _M_ARM64 is an MSVC-only predefined macro, so
-          # it is never defined under Clang on macOS (even on Apple Silicon).
-          # The block therefore compiles on macOS and fails on the missing
-          # `cef/dullahan_version.h` header when those headers are not on the
-          # include path. Excluding Apple here matches the block's evident
-          # intent (skip it on platforms where the CEF/VLC version headers
-          # aren't present in this configuration). The `set -e` + count check
-          # makes this fail loudly if the upstream guard text ever changes,
-          # rather than silently no-op.
-          set -euo pipefail
-          f=indra/newview/llappviewer.cpp
-          before=$(grep -c '#if !_M_ARM64 // !LL_LINUX' "$f")
-          if [ "$before" -ne 3 ]; then
-            echo "ERROR: expected 3 '#if !_M_ARM64 // !LL_LINUX' guards, found $before."
-            echo "Upstream source changed; re-check the macOS CEF/VLC patch."
-            grep -n '_M_ARM64' "$f" || true
-            exit 1
-          fi
-          perl -pi -e 's{#if !_M_ARM64 // !LL_LINUX}{#if !_M_ARM64 \&\& !defined(__APPLE__) // !LL_LINUX / !LL_DARWIN}g' "$f"
-          after=$(grep -c '!defined(__APPLE__)' "$f")
-          echo "Patched $after guard(s) in $f."
-          [ "$after" -eq 3 ]
-
       - name: Set up MacPorts (installs cached deps from parameter file)
         uses: melusina-org/setup-macports@v1
         with:
-          # Ports are listed in this file so the action installs them under
-          # its built-in cache (keyed on macOS version + this file). This is
-          # what makes the slow boost/ICU compile reused across runs instead
-          # of rebuilt every time.
           parameters: .github/parameters/setup-macports.yaml
 
       - name: Dump MacPorts logs on failure
@@ -72,28 +38,16 @@ jobs:
             echo "######################################################"
             echo "### $log"
             echo "######################################################"
-            # The actual compiler error is usually near the end; show the tail.
             tail -n 80 "$log"
           done
 
       - name: Configure
         shell: bash
         run: |
-          # Resolve the active SDK path dynamically rather than hardcoding
-          # the README's literal /Applications/Xcode.app/... path.
           SDKPATH="$(xcrun --show-sdk-path)"
           export LL_BUILD="-O3 -gdwarf-2 -stdlib=libc++ -mmacosx-version-min=12 -iwithsysroot $SDKPATH -std=c++20 -fPIC -DLL_RELEASE=1 -DLL_RELEASE_FOR_DOWNLOAD=1 -DNDEBUG -DPIC -DLL_DARWIN=1"
 
           mkdir build-macos && cd build-macos
-          # NOTE: ENABLE_MEDIA_PLUGINS is OFF as a temporary measure. With it
-          # ON, the viewer bundles libVLC and runs install_name_tool on the
-          # VLC dylibs *after* ad-hoc signing, which invalidates their code
-          # signatures (libvlc/libvlccore fail `codesign --verify`, and the
-          # app is SIGKILL'd at launch: "Code Signature Invalid"). Only the
-          # VLC dylibs are affected. For test builds of non-media features
-          # this is an acceptable drop. TODO before official releases: fix the
-          # signing order so VLC dylibs are (re)signed after their rpath
-          # fixups, then set this back to ON.
           cmake \
             -DCMAKE_BUILD_TYPE:STRING=Release \
             -DADDRESS_SIZE:STRING=64 \
@@ -136,10 +90,6 @@ jobs:
         shell: bash
         run: |
           cd build-macos/newview
-          # A .dmg preserves the bundle byte-for-byte (symlinks, perms, xattrs),
-          # so the ad-hoc code signature stays valid. A zip round-trip can
-          # dereference framework symlinks and break the seal, which shows up
-          # as "code or signature have been modified" / "app is damaged".
           hdiutil create \
             -volname "Megapahit" \
             -srcfolder "Megapahit.app" \
@@ -150,7 +100,6 @@ jobs:
         shell: bash
         run: |
           cd build-macos/newview
-          # Mount the dmg and verify the signature inside it is still intact.
           MNT="$(mktemp -d)"
           hdiutil attach -nobrowse -mountpoint "$MNT" \
             Megapahit-*-macos-*.dmg
@@ -163,7 +112,7 @@ jobs:
           echo "Signature verified intact inside the dmg."
 
       - name: Upload app artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: megapahit-macos-${{ steps.version.outputs.version }}
           path: build-macos/newview/Megapahit-*-macos-*.dmg
@@ -171,7 +120,7 @@ jobs:
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           files: build-macos/newview/Megapahit-*-macos-*.dmg
