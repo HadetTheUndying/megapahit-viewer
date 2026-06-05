@@ -94,6 +94,7 @@ jobs:
             -volname "Megapahit" \
             -srcfolder "Megapahit.app" \
             -ov -format UDZO \
+            -nospotlight \
             "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).dmg"
 
       - name: Verify signature survived packaging
