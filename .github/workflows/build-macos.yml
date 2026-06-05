@@ -93,7 +93,7 @@ jobs:
           hdiutil create \
             -volname "Megapahit" \
             -srcfolder "Megapahit.app" \
-            -ov -format UDZO \
+            -ov -format UDRW \
             -nospotlight \
             "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).dmg"
 
