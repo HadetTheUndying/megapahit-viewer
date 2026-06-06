@@ -86,37 +86,32 @@ jobs:
         shell: bash
         run: echo "version=$(cat indra/newview/viewer_version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Package .app into a .dmg
+      - name: Package .app into a .zip
         shell: bash
         run: |
           cd build-macos/newview
-          hdiutil create \
-            -volname "Megapahit" \
-            -srcfolder "Megapahit.app" \
-            -ov -format UDZO \
-            -nospotlight \
-            "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).dmg"
+          ditto -c -k --keepParent "Megapahit.app" \
+            "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).zip"
 
       - name: Verify signature survived packaging
         shell: bash
         run: |
           cd build-macos/newview
-          MNT="$(mktemp -d)"
-          hdiutil attach -nobrowse -mountpoint "$MNT" \
-            Megapahit-*-macos-*.dmg
-          codesign --verify --deep --strict --verbose=2 "$MNT/Megapahit.app" || {
-            echo "Signature verification FAILED inside the dmg"
-            hdiutil detach "$MNT" || true
+          mkdir -p verify-tmp
+          ditto -x -k Megapahit-*-macos-*.zip verify-tmp/
+          codesign --verify --deep --strict --verbose=2 verify-tmp/Megapahit.app || {
+            echo "Signature verification FAILED"
+            rm -rf verify-tmp
             exit 1
           }
-          hdiutil detach "$MNT"
-          echo "Signature verified intact inside the dmg."
+          rm -rf verify-tmp
+          echo "Signature verified intact."
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: megapahit-macos-${{ steps.version.outputs.version }}
-          path: build-macos/newview/Megapahit-*-macos-*.dmg
+          path: build-macos/newview/Megapahit-*-macos-*.zip
           if-no-files-found: error
 
       - name: Upload to release
@@ -124,5 +119,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
-          files: build-macos/newview/Megapahit-*-macos-*.dmg
+          files: build-macos/newview/Megapahit-*-macos-*.zip
           prerelease: ${{ startsWith(github.ref_name, 'test/') || startsWith(github.ref_name, 'build/') }}
