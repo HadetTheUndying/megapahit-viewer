@@ -108,7 +108,7 @@ jobs:
           echo "Signature verified intact."
 
       - name: Upload app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: megapahit-macos-${{ steps.version.outputs.version }}
           path: build-macos/newview/Megapahit-*-macos-*.zip
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ github.ref_name }}
           files: build-macos/newview/Megapahit-*-macos-*.zip
