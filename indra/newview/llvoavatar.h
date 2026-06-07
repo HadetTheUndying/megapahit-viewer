@@ -520,10 +520,9 @@ public:
         AV_ALWAYS_RENDER   = 2
     };
     void        setVisualMuteSettings(VisualMuteSettings set);
+    VisualMuteSettings  getVisualMuteSettings() const               { return mVisuallyMuteSetting;  };
 
 protected:
-    // If you think you need to access this outside LLVOAvatar, you probably want getOverallAppearance()
-    VisualMuteSettings  getVisualMuteSettings()                     { return mVisuallyMuteSetting;  };
 
 public:
 

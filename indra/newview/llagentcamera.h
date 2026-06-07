@@ -44,7 +44,8 @@ enum ECameraMode
     CAMERA_MODE_MOUSELOOK,
     CAMERA_MODE_CUSTOMIZE_AVATAR,
     CAMERA_MODE_FOLLOW,
-    CAMERA_MODE_OTS          // Over-the-shoulder: mouselook input + third-person camera
+    CAMERA_MODE_OTS,         // Over-the-shoulder: mouselook input + third-person camera
+    CAMERA_MODE_SPECTATE     // Spectate another avatar's position and look direction
 };
 
 /** Camera Presets for CAMERA_MODE_THIRD_PERSON */
@@ -96,12 +97,16 @@ public:
     void            changeCameraToFollow(bool animate = true);  // Ventrella
     void            changeCameraToOTS();             // Over-the-shoulder aim mode
     void            changeCameraFromOTS();           // Exit OTS back to third person
+    void            changeCameraToSpectate(const LLUUID& target_id); // Spectate another avatar
+    void            changeCameraFromSpectate();      // Exit spectate mode
     bool            cameraThirdPerson() const       { return (mCameraMode == CAMERA_MODE_THIRD_PERSON && mLastCameraMode == CAMERA_MODE_THIRD_PERSON); }
     // Also true for OTS — reuses mouselook input and UI behaviour; camera position handled separately.
     bool            cameraMouselook() const         { return (mCameraMode == CAMERA_MODE_MOUSELOOK && mLastCameraMode == CAMERA_MODE_MOUSELOOK) || mCameraMode == CAMERA_MODE_OTS; }
     bool            cameraCustomizeAvatar() const   { return (mCameraMode == CAMERA_MODE_CUSTOMIZE_AVATAR /*&& !mCameraAnimating*/); }
     bool            cameraFollow() const            { return (mCameraMode == CAMERA_MODE_FOLLOW && mLastCameraMode == CAMERA_MODE_FOLLOW); }
     bool            cameraOTS() const               { return mCameraMode == CAMERA_MODE_OTS; }
+    bool            cameraSpectate() const          { return mCameraMode == CAMERA_MODE_SPECTATE; }
+    LLUUID          getSpectateTarget() const       { return mSpectateTargetID; }
     ECameraMode     getCameraMode() const           { return mCameraMode; }
     ECameraMode     getLastCameraMode() const       { return mLastCameraMode; }
     void            updateCamera();                 // Call once per frame to update camera location/orientation
@@ -111,6 +116,8 @@ public:
 private:
     ECameraMode     mCameraMode;                    // Target mode after transition animation is done
     ECameraMode     mLastCameraMode;
+    LLUUID                           mSpectateTargetID;      // Target avatar UUID when in CAMERA_MODE_SPECTATE
+    LLPointer<LLHUDEffectLookAt>     mSpectateLookAt;        // Cached look-at effect for spectate target
 
     //--------------------------------------------------------------------
     // Preset

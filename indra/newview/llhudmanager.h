@@ -53,6 +53,8 @@ public:
     static LLColor4 sParentColor;
     static LLColor4 sChildColor;
 
+    const std::vector<LLPointer<LLHUDEffect>>& getHUDEffects() const { return mHUDEffects; }
+
 protected:
     std::vector<LLPointer<LLHUDEffect> > mHUDEffects;
 };

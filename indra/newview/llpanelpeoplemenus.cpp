@@ -34,6 +34,7 @@
 
 // newview
 #include "llagent.h"
+#include "llagentcamera.h"
 #include "llagentdata.h"            // for gAgentID
 #include "llavataractions.h"
 #include "llcallingcard.h"          // for LLAvatarTracker
@@ -86,12 +87,14 @@ LLContextMenu* PeopleContextMenu::createMenu()
         registrar.add("Avatar.Eject",           boost::bind(&PeopleContextMenu::eject,                  this));
         registrar.add("Avatar.EstateKick",      boost::bind(&LLAvatarActions::estateKickAvatar,             id));
         registrar.add("Avatar.EstateBan",       boost::bind(&LLAvatarActions::estateBanAvatar,              id));
+        registrar.add("Avatar.Spectate",        boost::bind(&PeopleContextMenu::spectate,                this));
 
 
         enable_registrar.add("Avatar.EnableItem", boost::bind(&PeopleContextMenu::enableContextMenuItem, this, _2));
         enable_registrar.add("Avatar.CheckItem",  boost::bind(&PeopleContextMenu::checkContextMenuItem, this, _2));
         enable_registrar.add("Avatar.EnableFreezeEject", boost::bind(&PeopleContextMenu::enableFreezeEject, this, _2));
         enable_registrar.add("Avatar.EnableEstateEjectBan", boost::bind(&PeopleContextMenu::enableEstateEjectBan, this, _2));
+        enable_registrar.add("Avatar.EnableSpectate", boost::bind(&PeopleContextMenu::enableSpectate, this, _2));
 
         // create the context menu from the XUI
         menu = createFromFile("menu_people_nearby.xml");
@@ -382,6 +385,29 @@ void PeopleContextMenu::eject()
     LLAvatarActions::ejectAvatar(id ,LLViewerParcelMgr::getInstance()->isParcelOwnedByAgent(parcel,GP_LAND_MANAGE_BANNED));
 }
 
+void PeopleContextMenu::spectate()
+{
+    if (mUUIDs.size() != 1 || mUUIDs.front() == gAgent.getID())
+        return;
+
+    const LLUUID& id = mUUIDs.front();
+    if (gAgentCamera.cameraSpectate() && gAgentCamera.getSpectateTarget() == id)
+    {
+        gAgentCamera.changeCameraFromSpectate();
+    }
+    else
+    {
+        gAgentCamera.changeCameraToSpectate(id);
+    }
+}
+
+bool PeopleContextMenu::enableSpectate(const LLSD& /*userdata*/)
+{
+    if (mUUIDs.size() != 1 || mUUIDs.front() == gAgent.getID())
+        return false;
+    return true;
+}
+
 void PeopleContextMenu::startConference()
 {
     uuid_vec_t uuids;
@@ -435,6 +461,7 @@ void NearbyPeopleContextMenu::buildContextMenu(class LLMenuGL& menu, U32 flags)
         items.push_back(std::string("eject"));
         items.push_back(std::string("estate_eject"));
         items.push_back(std::string("estate_ban"));
+        items.push_back(std::string("spectate"));
     }
 
     hide_context_entries(menu, items, disabled_items);

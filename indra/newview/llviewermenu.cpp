@@ -4103,6 +4103,40 @@ bool enable_estate_eject_ban(const LLSD& avatar_id)
     return region->getOwner() == gAgent.getID() || region->isEstateManager();
 }
 
+void handle_avatar_spectate(const LLSD& avatar_id)
+{
+    LLUUID id = avatar_id.asUUID();
+    if (id.isNull())
+    {
+        LLVOAvatar* avatar = find_avatar_from_object(
+            LLSelectMgr::getInstance()->getSelection()->getPrimaryObject());
+        if (avatar) id = avatar->getID();
+    }
+    if (id.notNull())
+    {
+        if (gAgentCamera.cameraSpectate() && gAgentCamera.getSpectateTarget() == id)
+        {
+            gAgentCamera.changeCameraFromSpectate();
+        }
+        else
+        {
+            gAgentCamera.changeCameraToSpectate(id);
+        }
+    }
+}
+
+bool enable_spectate(const LLSD& avatar_id)
+{
+    LLUUID id = avatar_id.asUUID();
+    if (id.isNull())
+    {
+        LLVOAvatar* avatar = find_avatar_from_object(
+            LLSelectMgr::getInstance()->getSelection()->getPrimaryObject());
+        if (avatar) id = avatar->getID();
+    }
+    return id.notNull() && id != gAgent.getID();
+}
+
 bool my_profile_visible()
 {
     LLFloater* floaterp = LLAvatarActions::getProfileFloater(gAgentID);
@@ -10399,6 +10433,8 @@ void initialize_menus()
     commit.add("Avatar.EstateKick", boost::bind(&handle_avatar_estate_kick, _2));
     commit.add("Avatar.EstateBan", boost::bind(&handle_avatar_estate_ban, _2));
     enable.add("Avatar.EnableEstateEjectBan", boost::bind(&enable_estate_eject_ban, _2));
+    commit.add("Avatar.Spectate", boost::bind(&handle_avatar_spectate, _2));
+    enable.add("Avatar.EnableSpectate", boost::bind(&enable_spectate, _2));
     commit.add("Avatar.ShowInspector", boost::bind(&handle_avatar_show_inspector));
     view_listener_t::addMenu(new LLAvatarSendIM(), "Avatar.SendIM");
     view_listener_t::addMenu(new LLAvatarCall(), "Avatar.Call");

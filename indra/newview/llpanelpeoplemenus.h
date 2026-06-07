@@ -48,8 +48,10 @@ private:
     bool checkContextMenuItem(const LLSD& userdata);
     bool enableFreezeEject(const LLSD& userdata);
     bool enableEstateEjectBan(const LLSD& userdata);
+    bool enableSpectate(const LLSD& userdata);
     void offerTeleport();
     void eject();
+    void spectate();
     void startConference();
     void requestTeleport();
 };

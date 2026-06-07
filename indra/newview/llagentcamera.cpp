@@ -33,6 +33,7 @@
 #include "llanimationstates.h"
 #include "llfloatercamera.h"
 #include "llfloaterreg.h"
+#include "llhudeffectlookat.h"
 #include "llhudmanager.h"
 #include "lljoystickbutton.h"
 #include "llmorphview.h"
@@ -1231,6 +1232,16 @@ void LLAgentCamera::updateCamera()
         mCameraUpVector = mCameraUpVector * gAgentAvatarp->getRenderRotation();
     }
 
+    // Spectate mode: verify target is still in range every frame.
+    if (mCameraMode == CAMERA_MODE_SPECTATE)
+    {
+        LLViewerObject* obj = gObjectList.findObject(mSpectateTargetID);
+        if (!obj || !obj->isAvatar())
+        {
+            changeCameraFromSpectate();
+        }
+    }
+
     if (cameraThirdPerson() && (mFocusOnAvatar || mAllowChangeToFollow) && LLFollowCamMgr::getInstance()->getActiveFollowCamParams())
     {
         mAllowChangeToFollow = false;
@@ -1612,6 +1623,40 @@ LLVector3d LLAgentCamera::calcFocusPositionTargetGlobal()
         mFocusTargetGlobal = avatar_pos + LLVector3d(focus_world);
         return mFocusTargetGlobal;
     }
+    else if (mCameraMode == CAMERA_MODE_SPECTATE)
+    {
+        LLViewerObject* obj = gObjectList.findObject(mSpectateTargetID);
+        if (obj && obj->isAvatar())
+        {
+            LLVOAvatar* target_av = (LLVOAvatar*)obj;
+            LLVector3 head_pos = target_av->mHeadp
+                ? target_av->mHeadp->getWorldPosition()
+                : target_av->getPositionAgent();
+
+            // Use lookat effect if available and is mouselook/freelook type.
+            bool used_lookat = false;
+            if (mSpectateLookAt.notNull() && !mSpectateLookAt->isDead())
+            {
+                ELookAtType look_type = mSpectateLookAt->getLookAtType();
+                if (look_type == LOOKAT_TARGET_MOUSELOOK || look_type == LOOKAT_TARGET_FREELOOK)
+                {
+                    mFocusTargetGlobal = gAgent.getPosGlobalFromAgent(
+                        head_pos + mSpectateLookAt->getTargetPos());
+                    used_lookat = true;
+                }
+            }
+
+            if (!used_lookat)
+            {
+                // Fall back to body yaw rotation
+                LLQuaternion body_rot = target_av->getRenderRotation();
+                LLVector3 forward(3.0f, 0.f, 0.f);
+                mFocusTargetGlobal = gAgent.getPosGlobalFromAgent(head_pos)
+                    + LLVector3d(forward * body_rot);
+            }
+        }
+        return mFocusTargetGlobal;
+    }
     else if (mCameraMode == CAMERA_MODE_MOUSELOOK)
     {
         LLVector3d at_axis(1.0, 0.0, 0.0);
@@ -1801,6 +1846,34 @@ LLVector3d LLAgentCamera::calcCameraPositionTargetGlobal(bool *hit_limit)
         LLVector3 world_offset = local_offset * agent_rot;
         LLVector3d avatar_pos = gAgent.getPosGlobalFromAgent(getAvatarRootPosition());
         camera_position_global = avatar_pos + LLVector3d(world_offset);
+    }
+    else if (mCameraMode == CAMERA_MODE_SPECTATE)
+    {
+        LLViewerObject* obj = gObjectList.findObject(mSpectateTargetID);
+        if (obj && obj->isAvatar())
+        {
+            LLVOAvatar* target_av = (LLVOAvatar*)obj;
+            if (target_av->mHeadp)
+            {
+                // Place camera at the target's eye position, pushed slightly
+                // forward past the face mesh so we're not inside their head.
+                LLVector3 head_pos = target_av->mHeadp->getWorldPosition();
+                LLQuaternion head_rot = target_av->mHeadp->getWorldRotation();
+                LLVector3 forward_offset(0.15f, 0.f, 0.f);
+                camera_position_global = gAgent.getPosGlobalFromAgent(
+                    head_pos + (forward_offset * head_rot));
+            }
+            else
+            {
+                camera_position_global = target_av->getPositionGlobal();
+            }
+        }
+        else
+        {
+            // Target lost — fall back gracefully
+            changeCameraFromSpectate();
+            camera_position_global = calcCameraPositionTargetGlobal(hit_limit);
+        }
     }
     else if (mCameraMode == CAMERA_MODE_MOUSELOOK)
     {
@@ -2318,6 +2391,53 @@ void LLAgentCamera::changeCameraFromOTS()
         // changeCameraToDefault handles clearing AGENT_CONTROL_MOUSELOOK,
         // showing the cursor, and restoring the normal camera mode.
         changeCameraToDefault();
+    }
+}
+
+//-----------------------------------------------------------------------------
+// changeCameraToSpectate()
+// Places the camera at the target avatar's eye position looking in the
+// direction they are facing. The avatar body is behind the camera so it
+// never occludes the view — no derender required.
+//-----------------------------------------------------------------------------
+void LLAgentCamera::changeCameraToSpectate(const LLUUID& target_id)
+{
+    if (target_id.isNull() || target_id == gAgent.getID())
+        return;
+
+    // Search the HUD effects list on entry and cache the look-at pointer.
+    mSpectateLookAt = nullptr;
+    const std::vector<LLPointer<LLHUDEffect>>& effects = LLHUDManager::getInstance()->getHUDEffects();
+    for (const LLPointer<LLHUDEffect>& effect : effects)
+    {
+        if (effect.isNull() || effect->isDead()) continue;
+        if (effect->getType() != LLHUDObject::LL_HUD_EFFECT_LOOKAT) continue;
+        LLViewerObject* src = const_cast<LLHUDEffect*>(effect.get())->getSourceObject();
+        if (src && src->getID() == target_id)
+        {
+            mSpectateLookAt = (LLHUDEffectLookAt*)effect.get();
+            break;
+        }
+    }
+
+    updateLastCamera();
+    mSpectateTargetID = target_id;
+    mCameraMode = CAMERA_MODE_SPECTATE;
+    mFocusOnAvatar = false;
+    gAgent.setShowAvatar(true);
+    startCameraAnimation();
+}
+
+//-----------------------------------------------------------------------------
+// changeCameraFromSpectate()
+//-----------------------------------------------------------------------------
+void LLAgentCamera::changeCameraFromSpectate()
+{
+    if (mCameraMode == CAMERA_MODE_SPECTATE)
+    {
+        mSpectateLookAt = nullptr;
+        mSpectateTargetID.setNull();
+        changeCameraToThirdPerson(true);
     }
 }
 

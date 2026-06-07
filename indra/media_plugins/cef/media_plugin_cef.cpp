@@ -666,7 +666,11 @@ void MediaPluginCEF::receiveMessage(const char* message_string)
                     proxy_url << mProxyHost << ":" << mProxyPort;
                     settings.proxy_host_port = proxy_url.str();
                 }
+                #if LL_DARWIN
+                settings.disable_gpu = true;
+#else
                 settings.disable_gpu = mDisableGPU;
+#endif
 #if LL_DARWIN
                 settings.disable_network_service = mDisableNetworkService;
                 settings.use_mock_keychain = mUseMockKeyChain;
