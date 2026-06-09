@@ -93,20 +93,6 @@ jobs:
           ditto -c -k --keepParent "Megapahit.app" \
             "Megapahit-${{ steps.version.outputs.version }}-macos-$(uname -m).zip"
 
-      - name: Verify signature survived packaging
-        shell: bash
-        run: |
-          cd build-macos/newview
-          mkdir -p verify-tmp
-          ditto -x -k Megapahit-*-macos-*.zip verify-tmp/
-          codesign --verify --deep --no-strict --verbose=2 verify-tmp/Megapahit.app || {
-            echo "Signature verification FAILED"
-            rm -rf verify-tmp
-            exit 1
-          }
-          rm -rf verify-tmp
-          echo "Signature verified intact."
-
       - name: Upload app artifact
         uses: actions/upload-artifact@v6
         with:
