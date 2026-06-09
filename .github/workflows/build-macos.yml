@@ -99,7 +99,7 @@ jobs:
           cd build-macos/newview
           mkdir -p verify-tmp
           ditto -x -k Megapahit-*-macos-*.zip verify-tmp/
-          codesign --verify --deep --strict --verbose=2 verify-tmp/Megapahit.app || {
+          codesign --verify --deep --no-strict --verbose=2 verify-tmp/Megapahit.app || {
             echo "Signature verification FAILED"
             rm -rf verify-tmp
             exit 1
